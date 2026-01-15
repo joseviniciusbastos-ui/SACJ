@@ -8,15 +8,16 @@ import { ParsedDocument } from '../types';
 function extractAmount(text: string): number | undefined {
     // Procura por padrões de valores em reais: R$ 1.234,56 ou 1234.56
     const patterns = [
-        /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/,
-        /\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/,
+        /(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})\b/,
         /\b(\d+\.\d{2})\b/,
+        /(?:R\$\s*)?(\d+,\d{2})\b/,
     ];
 
     // Tenta encontrar o valor de "total" ou "valor nominal" em relatórios de inadimplência
     const totalPatterns = [
-        /(?:Total|Valor Total|Total Geral|Valor Nominal)\s*:?\s*(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
-        /SOMA\s*:?\s*(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i
+        /(?:Total|Valor Total|Total Geral|Valor Nominal|Soma|Liquidado|Boleto|A Pagar|Vencido|Principal|Subtotal)\s*[:=]?\s*(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
+        /TOTAL.*?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
+        /VALOR.*?(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i
     ];
 
     for (const pattern of totalPatterns) {
@@ -44,18 +45,19 @@ function extractAmount(text: string): number | undefined {
  * Tenta extrair datas de texto
  */
 function extractDate(text: string): Date | undefined {
-    // Procura por padrões de data: DD/MM/YYYY
     const patterns = [
         /(\d{2})\/(\d{2})\/(\d{4})/,
         /(\d{2})-(\d{2})-(\d{4})/,
+        /(\d{2})\/(\d{2})\/(\d{2})\b/,
     ];
 
     for (const pattern of patterns) {
         const match = text.match(pattern);
         if (match) {
             const day = parseInt(match[1]);
-            const month = parseInt(match[2]) - 1; // Mês começa em 0
-            const year = parseInt(match[3]);
+            const month = parseInt(match[2]) - 1;
+            let year = parseInt(match[3]);
+            if (year < 100) year += 2000;
             const date = new Date(year, month, day);
             if (!isNaN(date.getTime())) return date;
         }
@@ -68,17 +70,9 @@ function extractDate(text: string): Date | undefined {
  * Tenta extrair CPF/CNPJ de texto
  */
 function extractCpfCnpj(text: string): string | undefined {
-    // Procura por padrões de CPF (###.###.###-##) ou CNPJ (##.###.###/####-##)
-    const cpfPattern = /(\d{3}\.\d{3}\.\d{3}-\d{2})/;
-    const cnpjPattern = /(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/;
-
-    let match = text.match(cnpjPattern);
-    if (match) return match[1];
-
-    match = text.match(cpfPattern);
-    if (match) return match[1];
-
-    return undefined;
+    const cpfCnpjPattern = /(\d{3}\.\d{3}\.\d{3}-\d{2})|(\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})/;
+    const match = text.match(cpfCnpjPattern);
+    return match ? match[0] : undefined;
 }
 
 /**
@@ -89,13 +83,18 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
         const pdfParse = require('pdf-parse');
         const data = await pdfParse(buffer);
         const text = data.text;
+
+        console.log('--- START PDF DATA ---');
+        console.log(text.substring(0, 5000));
+        console.log('--- END PDF DATA ---');
+
         const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
 
-        // Regex inteligentes para campos brasileiros
-        const unitPattern = /(?:Unidade|Apto|Apartamento|Sala|Lote|Unid|Apt)\s*:?\s*(\d+[A-Z]?)/i;
-        const blockPattern = /(?:Bloco|Torre|Edifício|Ed|Bl)\s*:?\s*([A-Z\d]+)/i;
-        const condoLabels = /(?:Condomínio|Edifício|Residencial|Conjunto|Cond)\s*:?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ.\s\-]+)/i;
-        const nameLabels = /(?:Devedor|Proprietário|Morador|Condômino|Nome|Cliente)\s*:?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s]{5,})/i;
+        // Padrões de detecção genérica
+        const condoKeywords = ['CONDOMINIO', 'RESIDENCIAL', 'EDIFICIO', 'CHACARA', 'VILA', 'LOTEAMENTO', 'CONJUNTO', 'EMPRESARIAL', 'ASSOCIACAO'];
+        const unitPattern = /(?:Unidade|Apto|Apartamento|Sala|Lote|Unid|Apt|Loja|Box|Casa|Bloco|Quadra|Qd|Lt)\s*[:=]?\s*(\d+[A-Z\d\s\/]*)/i;
+        const nameLabels = /(?:Devedor|Proprietário|Morador|Condômino|Nome|Cliente|Sacado|Favorecido|Responsável)\s*[:=]?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s]{5,})/i;
+        const debtorLinePattern = /^(\d+[A-Z0-9\s\/]*?)\s+-\s+([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s]{5,})$/i;
 
         const parsed: ParsedDocument = {
             amount: extractAmount(text),
@@ -103,52 +102,87 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
             cpf_cnpj: extractCpfCnpj(text),
         };
 
-        // Identificação por etiquetas (Labels)
-        for (const line of lines) {
-            const condoMatch = line.match(condoLabels);
-            if (condoMatch && !parsed.condominiumName) parsed.condominiumName = condoMatch[1].trim();
+        // Identificação de Condomínio (Varre as primeiras 5 linhas de forma agressiva)
+        for (let i = 0; i < Math.min(lines.length, 5); i++) {
+            const line = lines[i].toUpperCase();
+            if (condoKeywords.some(keyword => line.includes(keyword))) {
+                // Se achou uma palavra chave, tenta limpar a linha para pegar o nome
+                let name = lines[i]
+                    .replace(/^[A-Z0-9]+\s+/, '') // Remove código inicial (ex: W002C)
+                    .replace(/\(\d+\)$/, '')     // Remove ID no final (ex: (31))
+                    .trim();
 
-            const nameMatch = line.match(nameLabels);
-            if (nameMatch && !parsed.debtorName) parsed.debtorName = nameMatch[1].trim();
-
-            const unitMatch = line.match(unitPattern);
-            if (unitMatch && !parsed.unit) parsed.unit = unitMatch[1];
-
-            const blockMatch = line.match(blockPattern);
-            if (blockMatch && !parsed.block) parsed.block = blockMatch[1];
-        }
-
-        // Heurística de Nome (Se não encontrar por label, procura linhas em caixa alta)
-        if (!parsed.debtorName) {
-            for (const line of lines) {
-                if (/^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s]{10,50}$/.test(line) &&
-                    !line.includes('CONDOMÍNIO') &&
-                    !line.includes('DOCUMENTO') &&
-                    !line.includes('NÃO É VALE')) {
-                    parsed.debtorName = line;
+                if (name.length > 5 && !parsed.condominiumName) {
+                    parsed.condominiumName = name;
                     break;
                 }
             }
         }
 
-        // Extração de itens de dívida (Tabelas)
-        // Padrões comuns: 01/01/2024 Descrição de Débito R$ 100,00
+        for (const line of lines) {
+            // Tenta detectar linha de nome composta (ex: 22 QD 15 - Renato Cesar)
+            const debtorMatch = line.match(debtorLinePattern);
+            if (debtorMatch && !parsed.debtorName) {
+                parsed.unit = debtorMatch[1].trim();
+                parsed.debtorName = debtorMatch[2].trim();
+            }
+
+            const nameMatch = line.match(nameLabels);
+            if (nameMatch && !parsed.debtorName) {
+                const name = nameMatch[1].split('\n')[0].split('-')[0].trim();
+                if (name.length > 3) parsed.debtorName = name;
+            }
+
+            const unitMatch = line.match(unitPattern);
+            if (unitMatch && !parsed.unit) {
+                parsed.unit = unitMatch[1].trim();
+            }
+        }
+
+        // Heurística de Nome de Fallback
+        if (!parsed.debtorName) {
+            for (const line of lines) {
+                if (/^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s\-]{8,50}$/.test(line) &&
+                    !condoKeywords.some(kw => line.toUpperCase().includes(kw)) &&
+                    !line.includes('DEMONSTRATIVO') && !line.includes('RELATÓRIO') &&
+                    !line.includes('INADIMPLÊNCIA') && !line.includes('DOCUMENTO') &&
+                    !line.includes('TOTAL') && !line.includes('SUBTOTAL') &&
+                    !line.includes('VENCIMENTO') && !line.includes('UNIDADE')) {
+                    parsed.debtorName = line.trim();
+                    break;
+                }
+            }
+        }
+
         const debtItems: any[] = [];
         const debtRowPatterns = [
+            // Layout Royal Adaptativo: Data Competência Cód - Descrição Valor
+            /(\d{2}\/\d{2}\/\d{2,4})\s+(\d{2}\/\d{4})\s+\d+.*?\s+-\s+(.+?)\s+(\d{1,3}(?:\.\d{3})*,\d{2})/g,
             /(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g, // Data Descrição Valor
-            /(\d{2}\/\d{2}\/\d{4})\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})\s+([A-Z0-9].*)/g // Data Valor Descrição
+            /(\d{2}\/\d{2}\/\d{4})\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})\s+([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ].*)/g, // Data Valor Descrição
+            /(\b\w{3}\/\d{4})\b\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g, // Mes/Ano Descrição Valor
+            /(\b\d{2}\/\d{4})\b\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g, // MM/YYYY Descrição Valor
+            /(\d{2}\/\d{2}\/\d{4})\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g, // Data Valor (sem desc)
         ];
 
         for (const pattern of debtRowPatterns) {
             let match;
-            pattern.lastIndex = 0; // Reset regex
+            pattern.lastIndex = 0;
             while ((match = pattern.exec(text)) !== null) {
                 let dateStr, description, valueStr;
 
-                if (pattern.source.includes('(.+?)\\s+(?:R\\$')) {
+                if (pattern.source.includes('-\\s+')) {
+                    dateStr = match[1];
+                    description = match[3].trim();
+                    valueStr = match[4];
+                } else if (pattern.source.includes('(.+?)\\s+(?:R\\$') || pattern.source.includes('(\\b\\w{3}\/\\d{4})') || pattern.source.includes('(\\b\\d{2}\/\\d{4})')) {
                     dateStr = match[1];
                     description = match[2].trim();
                     valueStr = match[3];
+                } else if (match.length === 3) {
+                    dateStr = match[1];
+                    valueStr = match[2];
+                    description = 'Parcela/Taxa';
                 } else {
                     dateStr = match[1];
                     valueStr = match[2];
@@ -158,17 +192,34 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
                 if (dateStr && valueStr) {
                     const cleanValue = valueStr.replace(/\./g, '').replace(',', '.');
                     const amount = parseFloat(cleanValue);
-                    if (!isNaN(amount) && description && description.length > 2) {
-                        const [day, month, year] = dateStr.split('/').map(Number);
-                        debtItems.push({
-                            dueDate: new Date(year, month - 1, day),
-                            description,
-                            amount
-                        });
+                    if (!isNaN(amount) && amount > 0) {
+                        let dueDate: Date | undefined;
+                        if (dateStr.includes('/')) {
+                            const parts = dateStr.split('/');
+                            if (parts.length === 3) {
+                                let [day, month, year] = parts.map(Number);
+                                if (year < 100) year += 2000;
+                                dueDate = new Date(year, month - 1, day);
+                            } else if (parts.length === 2) {
+                                const monthMap: Record<string, number> = {
+                                    'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,
+                                    'jul': 6, 'ago': 7, 'set': 8, 'out': 9, 'nov': 10, 'dez': 11
+                                };
+                                let monthStr = parts[0].toLowerCase().substring(0, 3);
+                                let month = monthMap[monthStr];
+                                if (month === undefined) month = parseInt(parts[0]) - 1;
+                                const year = parseInt(parts[1]);
+                                if (!isNaN(month) && !isNaN(year)) dueDate = new Date(year, month, 1);
+                            }
+                        }
+
+                        if (dueDate && !isNaN(dueDate.getTime())) {
+                            debtItems.push({ dueDate, description, amount });
+                        }
                     }
                 }
             }
-            if (debtItems.length > 0) break;
+            if (debtItems.length > 1) break;
         }
 
         if (debtItems.length > 0) {
@@ -185,25 +236,15 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
     }
 }
 
-/**
- * Parse XML e tenta extrair informações relevantes
- */
 export async function parseXML(xmlString: string): Promise<ParsedDocument> {
     try {
-        const parser = new XMLParser({
-            ignoreAttributes: false,
-            attributeNamePrefix: '@_',
-        });
-
+        const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
         const result = parser.parse(xmlString);
-
-        // A estrutura do XML pode variar, então tentamos várias abordagens
         const parsed: ParsedDocument = {};
 
-        // Função auxiliar para buscar valores em objetos aninhados
         function searchInObject(obj: any, key: string): any {
+            if (!obj) return null;
             if (obj[key]) return obj[key];
-
             for (const k in obj) {
                 if (typeof obj[k] === 'object') {
                     const found = searchInObject(obj[k], key);
@@ -213,45 +254,22 @@ export async function parseXML(xmlString: string): Promise<ParsedDocument> {
             return null;
         }
 
-        // Tenta extrair valor
-        const valorField = searchInObject(result, 'valor') ||
-            searchInObject(result, 'total') ||
-            searchInObject(result, 'amount');
+        const valorField = searchInObject(result, 'valor') || searchInObject(result, 'total') || searchInObject(result, 'amount');
         if (valorField) {
             const amount = parseFloat(String(valorField).replace(',', '.'));
             if (!isNaN(amount)) parsed.amount = amount;
         }
 
-        // Tenta extrair data
-        const dataField = searchInObject(result, 'data') ||
-            searchInObject(result, 'vencimento') ||
-            searchInObject(result, 'dueDate');
-        if (dataField) {
-            parsed.dueDate = extractDate(String(dataField));
-        }
+        const dataField = searchInObject(result, 'data') || searchInObject(result, 'vencimento') || searchInObject(result, 'dueDate');
+        if (dataField) parsed.dueDate = extractDate(String(dataField));
 
-        // Tenta extrair nome
-        const nomeField = searchInObject(result, 'nome') ||
-            searchInObject(result, 'pagador') ||
-            searchInObject(result, 'devedor');
-        if (nomeField) {
-            parsed.debtorName = String(nomeField);
-        }
+        const nomeField = searchInObject(result, 'nome') || searchInObject(result, 'pagador') || searchInObject(result, 'devedor');
+        if (nomeField) parsed.debtorName = String(nomeField);
 
-        // Tenta extrair CPF/CNPJ
-        const cpfField = searchInObject(result, 'cpf') ||
-            searchInObject(result, 'cnpj') ||
-            searchInObject(result, 'documento');
-        if (cpfField) {
-            parsed.cpf_cnpj = String(cpfField);
-        }
+        const cpfField = searchInObject(result, 'cpf') || searchInObject(result, 'cnpj') || searchInObject(result, 'documento');
+        if (cpfField) parsed.cpf_cnpj = String(cpfField);
 
-        // Tenta extrair itens de dívida do XML
-        const items = searchInObject(result, 'parcelas') ||
-            searchInObject(result, 'itens') ||
-            searchInObject(result, 'items') ||
-            searchInObject(result, 'debitos');
-
+        const items = searchInObject(result, 'parcelas') || searchInObject(result, 'itens') || searchInObject(result, 'items') || searchInObject(result, 'debitos');
         if (items && Array.isArray(items)) {
             parsed.debtItems = items.map(item => ({
                 description: searchInObject(item, 'descricao') || searchInObject(item, 'description') || 'Parcela',

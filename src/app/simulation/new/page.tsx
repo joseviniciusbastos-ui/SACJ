@@ -44,15 +44,32 @@ export default function NewSimulationPage() {
     const handleFileProcessed = (data: any) => {
         if (data.data) {
             const parsed = data.data;
+            console.log('Dados processados recebidos:', parsed);
+
             setDebtor({
                 name: parsed.debtorName || '',
                 unit: parsed.unit || '',
-                block: '',
+                block: parsed.block || '',
                 condominiumName: parsed.condominiumName || '',
                 cpf_cnpj: parsed.cpf_cnpj || '',
             });
-            if (parsed.amount) setDebtAmount(parsed.amount);
-            if (parsed.dueDate) setStartDate(new Date(parsed.dueDate));
+
+            if (parsed.amount !== undefined) {
+                setDebtAmount(parsed.amount);
+            } else if (parsed.debtItems && parsed.debtItems.length > 0) {
+                // Soma os itens se não tiver o total explícito
+                const total = parsed.debtItems.reduce((acc: number, item: any) => acc + item.amount, 0);
+                setDebtAmount(total);
+            }
+
+            if (parsed.dueDate) {
+                setStartDate(new Date(parsed.dueDate));
+            } else if (parsed.debtItems && parsed.debtItems.length > 0) {
+                // Pega o vencimento mais antigo dos itens
+                const oldestDate = new Date(Math.min(...parsed.debtItems.map((it: any) => new Date(it.dueDate).getTime())));
+                setStartDate(oldestDate);
+            }
+
             if (parsed.debtItems) setDebtItems(parsed.debtItems);
 
             toast.success('Arquivo processado com sucesso!');

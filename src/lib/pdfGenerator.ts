@@ -26,30 +26,11 @@ export function generateAgreementPDF(data: PDFData): jsPDF {
     // Header
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('MINUTA DE ACORDO DE PARCELAMENTO', pageWidth / 2, yPosition, {
+    doc.text(`ACORDO DE PARCELAMENTO - ${data.debtor.condominiumName.toUpperCase()}`, pageWidth / 2, yPosition, {
         align: 'center',
     });
 
-    yPosition += 10;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    const now = new Date();
-    doc.text(
-        `Gerado em: ${formatarData(now)} às ${now.toLocaleTimeString('pt-BR')}`,
-        pageWidth / 2,
-        yPosition,
-        { align: 'center' }
-    );
-
-    yPosition += 5;
-    doc.text(
-        `Simulação Nº: ${data.simulation.id?.substring(0, 8)}`,
-        pageWidth / 2,
-        yPosition,
-        { align: 'center' }
-    );
-
-    yPosition += 15;
+    yPosition += 20;
 
     // Debtor and Creditor Information
     doc.setFontSize(12);

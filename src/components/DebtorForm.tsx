@@ -12,8 +12,28 @@ interface DebtorFormProps {
 }
 
 export default function DebtorForm({ debtor, onChange }: DebtorFormProps) {
+    const formatCpfCnpj = (value: string) => {
+        const digits = value.replace(/\D/g, '').slice(0, 14);
+        if (digits.length <= 11) {
+            return digits
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+        }
+        return digits
+            .replace(/^(\d{2})(\d)/, '$1.$2')
+            .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+            .replace(/\.(\d{3})(\d)/, '.$1/$2')
+            .replace(/(\d{4})(\d)/, '$1-$2');
+    };
+
     const handleChange = (field: keyof Debtor, value: string) => {
-        onChange({ ...debtor, [field]: value });
+        if (field === 'cpf_cnpj') {
+            const formatted = formatCpfCnpj(value);
+            onChange({ ...debtor, [field]: formatted });
+        } else {
+            onChange({ ...debtor, [field]: value });
+        }
     };
 
     return (
@@ -39,7 +59,7 @@ export default function DebtorForm({ debtor, onChange }: DebtorFormProps) {
                             id="cpf_cnpj"
                             value={debtor.cpf_cnpj}
                             onChange={(e) => handleChange('cpf_cnpj', e.target.value)}
-                            placeholder="000.000.000-00"
+                            placeholder="000.000.000-00 ou 00.000.000/0000-00"
                             required
                         />
                     </div>

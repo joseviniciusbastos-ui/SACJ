@@ -58,8 +58,13 @@ export default function DashboardPage() {
     const handleDownloadPDF = async (simulationId: string) => {
         try {
             const response = await fetch(`/api/pdf/${simulationId}`);
+            if (!response.ok) throw new Error('Erro ao baixar PDF');
+
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
+            // Ensure blob type is set correctly
+            const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(pdfBlob);
+
             const a = document.createElement('a');
             a.href = url;
             a.download = `acordo_${simulationId}.pdf`;

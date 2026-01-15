@@ -4,11 +4,12 @@ import { generateAgreementPDF } from '@/lib/pdfGenerator';
 
 export async function GET(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id } = await params;
         const simulation = await prisma.simulation.findUnique({
-            where: { id: params.id },
+            where: { id },
             include: {
                 debtor: true,
                 installments: {
@@ -58,7 +59,7 @@ export async function GET(
             calculationResult,
         };
 
-        const doc = generateAgreementPDF(pdfData);
+        const doc = generateAgreementPDF(pdfData as any);
         const pdfBuffer = doc.output('arraybuffer');
 
         return new NextResponse(pdfBuffer, {

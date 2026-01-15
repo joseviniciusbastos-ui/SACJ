@@ -2,7 +2,7 @@ export interface Debtor {
     id?: string;
     name: string;
     unit: string;
-    block?: string;
+    block: string | null;
     condominiumName: string;
     cpf_cnpj: string;
 }

@@ -1,0 +1,54 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password_hash String
+  name          String
+  createdAt     DateTime  @default(now())
+}
+
+model Debtor {
+  id              String       @id @default(uuid())
+  name            String
+  unit            String
+  block           String?
+  condominiumName String
+  cpf_cnpj        String
+  createdAt       DateTime     @default(now())
+  simulations     Simulation[]
+}
+
+model Simulation {
+  id              String        @id @default(uuid())
+  debtorId        String
+  debtAmount      Float
+  startDate       DateTime
+  agreementDate   DateTime
+  parameters_json String // JSON string: {juros, multa, honorarios, multaQuebraAcordo, indiceCorrecao}
+  status          String        @default("active")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  debtor          Debtor        @relation(fields: [debtorId], references: [id], onDelete: Cascade)
+  installments    Installment[]
+}
+
+model Installment {
+  id           String     @id @default(uuid())
+  simulationId String
+  number       Int
+  dueDate      DateTime
+  amount       Float
+  status       String     @default("pending")
+  simulation   Simulation @relation(fields: [simulationId], references: [id], onDelete: Cascade)
+}

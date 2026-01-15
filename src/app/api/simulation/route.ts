@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
         const simulations = await prisma.simulation.findMany({
             include: {
                 debtor: true,
+                creator: true,
             },
             orderBy: {
                 createdAt: 'desc',
@@ -19,13 +20,13 @@ export async function GET(req: NextRequest) {
         });
 
         const formattedSimulations = simulations.map((sim) => {
-            const params = JSON.parse(sim.parameters_json);
             return {
                 id: sim.id,
                 debtorName: sim.debtor.name,
                 condominiumName: sim.debtor.condominiumName,
                 totalAmount: sim.debtAmount,
                 createdAt: sim.createdAt,
+                createdBy: (sim as any).creator?.name || 'Sistema',
             };
         });
 
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
         const simulation = await prisma.simulation.create({
             data: {
                 debtorId: debtorRecord.id,
+                createdById: (session.user as any).id,
                 debtAmount: parseFloat(debtAmount.toString()),
                 startDate: new Date(startDate),
                 agreementDate: new Date(),

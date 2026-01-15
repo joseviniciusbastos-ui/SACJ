@@ -74,6 +74,13 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
         const pdfParse = require('pdf-parse');
         const data = await pdfParse(buffer);
         const text = data.text;
+        const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
+
+        // Regex inteligentes para campos brasileiros
+        const unitPattern = /(?:Unidade|Apto|Apartamento|Sala|Lote)\s*:?\s*(\d+[A-Z]?)/i;
+        const blockPattern = /(?:Bloco|Torre|Edifício|Ed)\s*:?\s*([A-Z\d]+)/i;
+        const condoLabels = /(?:Condomínio|Edifício|Residencial|Conjunto)\s*:?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ.\s\-]+)/i;
+        const nameLabels = /(?:Devedor|Proprietário|Morador|Condômino)\s*:?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s]+)/i;
 
         const parsed: ParsedDocument = {
             amount: extractAmount(text),
@@ -81,12 +88,59 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
             cpf_cnpj: extractCpfCnpj(text),
         };
 
-        // Tenta extrair nome (assume que é a primeira linha com palavras maiúsculas)
-        const lines = text.split('\n').filter((line: string) => line.trim());
+        // Identificação por etiquetas (Labels)
         for (const line of lines) {
-            if (/^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s]+$/.test(line.trim()) && line.length > 5) {
-                parsed.debtorName = line.trim();
-                break;
+            const condoMatch = line.match(condoLabels);
+            if (condoMatch && !parsed.condominiumName) parsed.condominiumName = condoMatch[1].trim();
+
+            const nameMatch = line.match(nameLabels);
+            if (nameMatch && !parsed.debtorName) parsed.debtorName = nameMatch[1].trim();
+
+            const unitMatch = line.match(unitPattern);
+            if (unitMatch && !parsed.unit) parsed.unit = unitMatch[1];
+
+            const blockMatch = line.match(blockPattern);
+            if (blockMatch && !parsed.block) parsed.block = blockMatch[1];
+        }
+
+        // Heurística de Nome (Se não encontrar por label, procura linhas em caixa alta)
+        if (!parsed.debtorName) {
+            for (const line of lines) {
+                if (/^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s]{10,50}$/.test(line) &&
+                    !line.includes('CONDOMÍNIO') &&
+                    !line.includes('DOCUMENTO') &&
+                    !line.includes('NÃO É VALE')) {
+                    parsed.debtorName = line;
+                    break;
+                }
+            }
+        }
+
+        // Extração de itens de dívida (Tabelas)
+        const debtItems: any[] = [];
+        const debtRowPattern = /(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g;
+
+        let match;
+        while ((match = debtRowPattern.exec(text)) !== null) {
+            const dateStr = match[1];
+            const description = match[2].trim();
+            const valueStr = match[3].replace(/\./g, '').replace(',', '.');
+            const amount = parseFloat(valueStr);
+
+            if (!isNaN(amount) && description.length > 2) {
+                const [day, month, year] = dateStr.split('/').map(Number);
+                debtItems.push({
+                    dueDate: new Date(year, month - 1, day),
+                    description,
+                    amount
+                });
+            }
+        }
+
+        if (debtItems.length > 0) {
+            parsed.debtItems = debtItems;
+            if (!parsed.amount) {
+                parsed.amount = debtItems.reduce((acc, item) => acc + item.amount, 0);
             }
         }
 
@@ -156,6 +210,20 @@ export async function parseXML(xmlString: string): Promise<ParsedDocument> {
             searchInObject(result, 'documento');
         if (cpfField) {
             parsed.cpf_cnpj = String(cpfField);
+        }
+
+        // Tenta extrair itens de dívida do XML
+        const items = searchInObject(result, 'parcelas') ||
+            searchInObject(result, 'itens') ||
+            searchInObject(result, 'items') ||
+            searchInObject(result, 'debitos');
+
+        if (items && Array.isArray(items)) {
+            parsed.debtItems = items.map(item => ({
+                description: searchInObject(item, 'descricao') || searchInObject(item, 'description') || 'Parcela',
+                amount: parseFloat(String(searchInObject(item, 'valor') || searchInObject(item, 'amount')).replace(',', '.')),
+                dueDate: extractDate(String(searchInObject(item, 'vencimento') || searchInObject(item, 'dueDate') || ''))
+            })).filter((it: any) => !isNaN(it.amount) && it.dueDate) as any[];
         }
 
         return parsed;

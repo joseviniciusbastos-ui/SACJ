@@ -38,6 +38,7 @@ export default function NewSimulationPage() {
         entrada: 0,
     });
     const [calculationResult, setCalculationResult] = useState<CalculationResult | null>(null);
+    const [debtItems, setDebtItems] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
 
     const handleFileProcessed = (data: any) => {
@@ -52,6 +53,7 @@ export default function NewSimulationPage() {
             });
             if (parsed.amount) setDebtAmount(parsed.amount);
             if (parsed.dueDate) setStartDate(new Date(parsed.dueDate));
+            if (parsed.debtItems) setDebtItems(parsed.debtItems);
 
             toast.success('Arquivo processado com sucesso!');
             setCurrentTab('debtor');
@@ -241,6 +243,27 @@ export default function NewSimulationPage() {
                                         />
                                     </div>
                                 </div>
+
+                                {debtItems.length > 0 && (
+                                    <div className="mt-8 p-6 bg-slate-50 rounded-2xl border border-slate-200">
+                                        <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                            <CheckCircle2 className="text-emerald-500 h-4 w-4" />
+                                            Itens extraídos do arquivo ({debtItems.length})
+                                        </h4>
+                                        <div className="space-y-2">
+                                            {debtItems.map((item, idx) => (
+                                                <div key={idx} className="flex justify-between items-center text-sm py-2 border-b border-slate-200 last:border-none">
+                                                    <span className="text-slate-600 font-medium">{item.description}</span>
+                                                    <div className="flex gap-4">
+                                                        <span className="text-slate-400 font-mono">{new Date(item.dueDate).toLocaleDateString('pt-BR')}</span>
+                                                        <span className="font-bold text-slate-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.amount)}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="mt-10 flex justify-end">
                                     <Button
                                         onClick={() => setCurrentTab('simulation')}
@@ -262,6 +285,7 @@ export default function NewSimulationPage() {
                                     parameters={parameters}
                                     debtAmount={debtAmount}
                                     startDate={startDate}
+                                    debtItems={debtItems}
                                     onChange={setParameters}
                                     onCalculationUpdate={setCalculationResult}
                                 />
@@ -292,6 +316,6 @@ export default function NewSimulationPage() {
                     </TabsContent>
                 </Tabs>
             </div>
-        </DashboardLayout>
+        </DashboardLayout >
     );
 }

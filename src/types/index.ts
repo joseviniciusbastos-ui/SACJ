@@ -40,13 +40,21 @@ export interface Installment {
     status: string;
 }
 
+export interface DebtItem {
+    description: string;
+    amount: number;
+    dueDate: Date;
+}
+
 export interface ParsedDocument {
     debtorName?: string;
     amount?: number;
     dueDate?: Date;
     unit?: string;
+    block?: string;
     condominiumName?: string;
     cpf_cnpj?: string;
+    debtItems?: DebtItem[];
 }
 
 export interface CalculationResult {

@@ -1,4 +1,4 @@
-import { SimulationParameters, CalculationResult } from '../types';
+import { SimulationParameters, CalculationResult, DebtItem } from '../types';
 
 /**
  * Calcula os dias entre duas datas
@@ -95,6 +95,56 @@ export function calcularTotalAcordo(
         multa,
         juros,
         correcao,
+        honorarios,
+        totalAcordo,
+        valorEntrada: params.entrada,
+        numeroParcelas: params.numeroParcelas,
+        valorParcela,
+        installments,
+    };
+}
+
+/**
+ * Calcula o total do acordo com base em múltiplos itens de dívida
+ */
+export function calcularTotalAcordoComItens(
+    items: DebtItem[],
+    dataAcordo: Date,
+    params: SimulationParameters
+): CalculationResult {
+    let totalPrincipal = 0;
+    let totalMulta = 0;
+    let totalJuros = 0;
+    let totalCorrecao = 0;
+
+    for (const item of items) {
+        const diasAtraso = calcularDiasAtraso(new Date(item.dueDate), dataAcordo);
+        const multa = calcularMulta(item.amount, params.multa);
+        const juros = calcularJurosMora(item.amount, params.juros, diasAtraso);
+        const correcao = calcularCorrecaoMonetaria(item.amount, params.indiceCorrecao);
+
+        totalPrincipal += item.amount;
+        totalMulta += multa;
+        totalJuros += juros;
+        totalCorrecao += correcao;
+    }
+
+    const subtotal = totalPrincipal + totalMulta + totalJuros + totalCorrecao;
+    const honorarios = calcularHonorarios(subtotal, params.honorarios);
+    const totalAcordo = subtotal + honorarios;
+
+    const saldoAposEntrada = totalAcordo - params.entrada;
+    const valorParcela = params.numeroParcelas > 0
+        ? saldoAposEntrada / params.numeroParcelas
+        : 0;
+
+    const installments = gerarParcelas(dataAcordo, params.numeroParcelas, valorParcela);
+
+    return {
+        principal: totalPrincipal,
+        multa: totalMulta,
+        juros: totalJuros,
+        correcao: totalCorrecao,
         honorarios,
         totalAcordo,
         valorEntrada: params.entrada,

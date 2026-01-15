@@ -24,6 +24,7 @@ interface SimulationListItem {
     condominiumName: string;
     totalAmount: number;
     createdAt: string;
+    createdBy: string;
 }
 
 export default function DashboardPage() {
@@ -170,7 +171,8 @@ export default function DashboardPage() {
                                                 <TableHead className="px-8 py-4 font-semibold text-xs tracking-wider uppercase text-muted-foreground">Devedor</TableHead>
                                                 <TableHead className="px-8 py-4 font-semibold text-xs tracking-wider uppercase text-muted-foreground">Condomínio</TableHead>
                                                 <TableHead className="px-8 py-4 font-semibold text-xs tracking-wider uppercase text-muted-foreground">Valor Total</TableHead>
-                                                <TableHead className="px-8 py-4 font-semibold text-xs tracking-wider uppercase text-muted-foreground">Data de Criação</TableHead>
+                                                <TableHead className="px-8 py-4 font-semibold text-xs tracking-wider uppercase text-muted-foreground">Data</TableHead>
+                                                <TableHead className="px-8 py-4 font-semibold text-xs tracking-wider uppercase text-muted-foreground">Autor</TableHead>
                                                 <TableHead className="px-8 py-4 font-semibold text-xs tracking-wider uppercase text-muted-foreground text-right">Ações</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -199,7 +201,15 @@ export default function DashboardPage() {
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="px-8 py-6">
-                                                        <span className="text-muted-foreground tabular-nums">{formatarData(new Date(sim.createdAt))}</span>
+                                                        <span className="text-muted-foreground tabular-nums whitespace-nowrap">{formatarData(new Date(sim.createdAt))}</span>
+                                                    </TableCell>
+                                                    <TableCell className="px-8 py-6">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 uppercase">
+                                                                {sim.createdBy.charAt(0)}
+                                                            </div>
+                                                            <span className="text-sm font-medium text-slate-600 truncate max-w-[120px]">{sim.createdBy}</span>
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell className="px-8 py-6 text-right">
                                                         <Button

@@ -10,7 +10,11 @@ import {
     Save,
     Mail,
     Lock,
-    Globe
+    Globe,
+    UserPlus,
+    Copy,
+    CheckCircle2,
+    Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +28,10 @@ import { toast } from 'sonner';
 export default function SettingsPage() {
     const { data: session } = useSession();
     const [saving, setSaving] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteRole, setInviteRole] = useState('OPERATOR');
+    const [inviting, setInviting] = useState(false);
+    const [inviteLink, setInviteLink] = useState('');
 
     const handleSave = () => {
         setSaving(true);
@@ -31,6 +39,36 @@ export default function SettingsPage() {
             setSaving(false);
             toast.success('Configurações salvas com sucesso!');
         }, 1000);
+    };
+
+    const isAdmin = (session?.user as any)?.role === 'ADMIN';
+
+    const handleInvite = async () => {
+        if (!inviteEmail) return;
+        setInviting(true);
+        try {
+            const res = await fetch('/api/users/invite', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: inviteEmail, role: inviteRole })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setInviteLink(data.inviteLink);
+                toast.success('Convite gerado com sucesso!');
+            } else {
+                toast.error(data.error);
+            }
+        } catch (error) {
+            toast.error('Erro ao processar convite');
+        } finally {
+            setInviting(false);
+        }
+    };
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text);
+        toast.info('Link copiado!');
     };
 
     return (
@@ -51,6 +89,9 @@ export default function SettingsPage() {
                         <TabsTrigger value="profile" className="rounded-lg font-bold px-6">Perfil</TabsTrigger>
                         <TabsTrigger value="security" className="rounded-lg font-bold px-6">Segurança</TabsTrigger>
                         <TabsTrigger value="system" className="rounded-lg font-bold px-6">Sistema</TabsTrigger>
+                        {isAdmin && (
+                            <TabsTrigger value="users" className="rounded-lg font-bold px-6">Gestão de Time</TabsTrigger>
+                        )}
                     </TabsList>
 
                     <TabsContent value="profile" className="space-y-6">
@@ -151,6 +192,59 @@ export default function SettingsPage() {
                                         <Input disabled defaultValue="Português (Brasil)" className="rounded-xl h-12 bg-slate-50/50" />
                                     </div>
                                 </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                    <TabsContent value="users" className="space-y-6">
+                        <Card className="border-none shadow-xl bg-white rounded-3xl overflow-hidden">
+                            <CardHeader className="p-8 border-b border-border/50 bg-slate-50/50">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600">
+                                        <UserPlus size={24} />
+                                    </div>
+                                    <div>
+                                        <CardTitle className="text-2xl font-bold">Convidar Operador</CardTitle>
+                                        <CardDescription>Envie um convite para novos membros da sua equipe.</CardDescription>
+                                    </div>
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-8 space-y-6">
+                                <div className="flex flex-col md:flex-row gap-4 items-end">
+                                    <div className="flex-1 space-y-2 w-full">
+                                        <Label className="font-bold text-slate-700">Email do Convidado</Label>
+                                        <Input
+                                            placeholder="exemplo@igreja.com"
+                                            value={inviteEmail}
+                                            onChange={(e) => setInviteEmail(e.target.value)}
+                                            className="rounded-xl h-12 bg-slate-50/50"
+                                        />
+                                    </div>
+                                    <Button
+                                        onClick={handleInvite}
+                                        disabled={inviting || !inviteEmail}
+                                        className="h-12 rounded-xl px-8 font-bold"
+                                    >
+                                        {inviting ? 'Gerando...' : 'Gerar Link de Acesso'}
+                                    </Button>
+                                </div>
+
+                                {inviteLink && (
+                                    <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <CheckCircle2 className="text-emerald-600" size={20} />
+                                            <span className="text-sm font-medium text-emerald-800 truncate max-w-md">{inviteLink}</span>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => copyToClipboard(inviteLink)}
+                                            className="text-emerald-700 hover:bg-emerald-100 rounded-lg"
+                                        >
+                                            <Copy size={16} className="mr-2" />
+                                            Copiar Link
+                                        </Button>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     </TabsContent>

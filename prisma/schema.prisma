@@ -11,12 +11,44 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum Role {
+  ADMIN
+  OPERATOR
+}
+
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
+  id            String       @id @default(uuid())
+  email         String       @unique
   password_hash String
   name          String
-  createdAt     DateTime  @default(now())
+  role          Role         @default(OPERATOR)
+  createdAt     DateTime     @default(now())
+  simulations   Simulation[] @relation("UserSimulations")
+  auditLogs     AuditLog[]
+  invitations   Invitation[] @relation("CreatedInvitations")
+}
+
+model Invitation {
+  id          String   @id @default(uuid())
+  email       String
+  role        Role     @default(OPERATOR)
+  token       String   @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdById String
+  createdAt   DateTime @default(now())
+  creator     User     @relation("CreatedInvitations", fields: [createdById], references: [id])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  entityType String
+  entityId   String
+  details    String?  // JSON string for additional context
+  userId     String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
 }
 
 model Debtor {
@@ -33,6 +65,7 @@ model Debtor {
 model Simulation {
   id              String        @id @default(uuid())
   debtorId        String
+  createdById     String
   debtAmount      Float
   startDate       DateTime
   agreementDate   DateTime
@@ -41,6 +74,7 @@ model Simulation {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   debtor          Debtor        @relation(fields: [debtorId], references: [id], onDelete: Cascade)
+  creator         User          @relation("UserSimulations", fields: [createdById], references: [id])
   installments    Installment[]
 }
 

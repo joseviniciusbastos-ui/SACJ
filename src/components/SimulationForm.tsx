@@ -11,6 +11,7 @@ interface SimulationFormProps {
     parameters: SimulationParameters;
     debtAmount: number;
     startDate: Date;
+    debtItems?: any[];
     onChange: (params: SimulationParameters) => void;
     onCalculationUpdate: (result: any) => void;
 }
@@ -19,6 +20,7 @@ export default function SimulationForm({
     parameters,
     debtAmount,
     startDate,
+    debtItems = [],
     onChange,
     onCalculationUpdate,
 }: SimulationFormProps) {
@@ -31,11 +33,15 @@ export default function SimulationForm({
 
     useEffect(() => {
         // Recalculate whenever parameters change
-        if (debtAmount > 0) {
+        if (debtItems && debtItems.length > 0) {
+            const { calcularTotalAcordoComItens } = require('@/lib/calculations');
+            const result = calcularTotalAcordoComItens(debtItems, agreementDate, parameters);
+            onCalculationUpdate(result);
+        } else if (debtAmount > 0) {
             const result = calcularTotalAcordo(debtAmount, startDate, agreementDate, parameters);
             onCalculationUpdate(result);
         }
-    }, [parameters, debtAmount, startDate, agreementDate]);
+    }, [parameters, debtAmount, startDate, agreementDate, debtItems]);
 
     return (
         <Card>

@@ -1,13 +1,30 @@
-import { Sidebar } from '@/components/Sidebar';
+'use client';
+
+import React from 'react';
+import Sidebar from './Sidebar';
+import { useSession } from 'next-auth/react';
+import { redirect } from 'next/navigation';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+    const { status } = useSession();
+
+    if (status === 'unauthenticated') {
+        redirect('/login');
+    }
+
+    if (status === 'loading') {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background">
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
     return (
-        <div className="flex min-h-screen bg-background text-foreground font-sans antialiased">
-            <aside className="fixed inset-y-0 left-0 z-20 hidden lg:block">
-                <Sidebar />
-            </aside>
-            <main className="flex-1 lg:pl-64 transition-all duration-300 ease-in-out">
-                <div className="container mx-auto p-6 md:p-8 max-w-7xl">
+        <div className="min-h-screen bg-background flex">
+            <Sidebar />
+            <main className="ml-64 flex-1 p-8">
+                <div className="max-w-7xl mx-auto h-full">
                     {children}
                 </div>
             </main>

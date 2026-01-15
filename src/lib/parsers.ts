@@ -82,11 +82,15 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
     try {
         const pdfParse = require('pdf-parse');
         const data = await pdfParse(buffer);
-        const text = data.text;
+        const text = data.text || '';
 
-        console.log('--- START PDF DATA ---');
-        console.log(text.substring(0, 5000));
-        console.log('--- END PDF DATA ---');
+        console.log('--- START PDF TEXT EXTRACTION ---');
+        console.log('Text Length:', text.length);
+        console.log('--- END PDF TEXT EXTRACTION ---');
+
+        if (text.trim().length < 50) {
+            throw new Error('PDF sem texto digital detectado. O arquivo pode ser uma imagem escaneada sem OCR ou estar protegido.');
+        }
 
         const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
 
@@ -102,14 +106,13 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
             cpf_cnpj: extractCpfCnpj(text),
         };
 
-        // Identificação de Condomínio (Varre as primeiras 5 linhas de forma agressiva)
-        for (let i = 0; i < Math.min(lines.length, 5); i++) {
+        // Identificação de Condomínio
+        for (let i = 0; i < Math.min(lines.length, 10); i++) {
             const line = lines[i].toUpperCase();
             if (condoKeywords.some(keyword => line.includes(keyword))) {
-                // Se achou uma palavra chave, tenta limpar a linha para pegar o nome
-                let name = lines[i]
-                    .replace(/^[A-Z0-9]+\s+/, '') // Remove código inicial (ex: W002C)
-                    .replace(/\(\d+\)$/, '')     // Remove ID no final (ex: (31))
+                const name = lines[i]
+                    .replace(/^[A-Z0-9]+\s+/, '')
+                    .replace(/\(\d+\)$/, '')
                     .trim();
 
                 if (name.length > 5 && !parsed.condominiumName) {
@@ -120,7 +123,6 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
         }
 
         for (const line of lines) {
-            // Tenta detectar linha de nome composta (ex: 22 QD 15 - Renato Cesar)
             const debtorMatch = line.match(debtorLinePattern);
             if (debtorMatch && !parsed.debtorName) {
                 parsed.unit = debtorMatch[1].trim();
@@ -139,7 +141,7 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
             }
         }
 
-        // Heurística de Nome de Fallback
+        // Fallback Nome
         if (!parsed.debtorName) {
             for (const line of lines) {
                 if (/^[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s\-]{8,50}$/.test(line) &&
@@ -147,7 +149,8 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
                     !line.includes('DEMONSTRATIVO') && !line.includes('RELATÓRIO') &&
                     !line.includes('INADIMPLÊNCIA') && !line.includes('DOCUMENTO') &&
                     !line.includes('TOTAL') && !line.includes('SUBTOTAL') &&
-                    !line.includes('VENCIMENTO') && !line.includes('UNIDADE')) {
+                    !line.includes('VENCIMENTO') && !line.includes('UNIDADE') &&
+                    !line.includes('PÁGINA') && !line.includes('PAGINA')) {
                     parsed.debtorName = line.trim();
                     break;
                 }
@@ -156,13 +159,12 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
 
         const debtItems: any[] = [];
         const debtRowPatterns = [
-            // Layout Royal Adaptativo: Data Competência Cód - Descrição Valor
             /(\d{2}\/\d{2}\/\d{2,4})\s+(\d{2}\/\d{4})\s+\d+.*?\s+-\s+(.+?)\s+(\d{1,3}(?:\.\d{3})*,\d{2})/g,
-            /(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g, // Data Descrição Valor
-            /(\d{2}\/\d{2}\/\d{4})\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})\s+([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ].*)/g, // Data Valor Descrição
-            /(\b\w{3}\/\d{4})\b\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g, // Mes/Ano Descrição Valor
-            /(\b\d{2}\/\d{4})\b\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g, // MM/YYYY Descrição Valor
-            /(\d{2}\/\d{2}\/\d{4})\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g, // Data Valor (sem desc)
+            /(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g,
+            /(\d{2}\/\d{2}\/\d{4})\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})\s+([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ].*)/g,
+            /(\b\w{3}\/\d{4})\b\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g,
+            /(\b\d{2}\/\d{4})\b\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g,
+            /(\d{2}\/\d{2}\/\d{4})\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g,
         ];
 
         for (const pattern of debtRowPatterns) {
@@ -229,10 +231,15 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
             }
         }
 
+        // Se não conseguiu extrair nada relevante, levanta erro motivacional
+        if (!parsed.debtorName && (!parsed.debtItems || parsed.debtItems.length === 0)) {
+            throw new Error('Não foi possível identificar dados de devedor ou débitos no PDF. Verifique se o arquivo está no formato esperado.');
+        }
+
         return parsed;
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error parsing PDF:', error);
-        return {};
+        throw error;
     }
 }
 
@@ -279,8 +286,8 @@ export async function parseXML(xmlString: string): Promise<ParsedDocument> {
         }
 
         return parsed;
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error parsing XML:', error);
-        return {};
+        throw error;
     }
 }

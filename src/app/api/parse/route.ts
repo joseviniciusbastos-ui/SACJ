@@ -32,10 +32,10 @@ export async function POST(req: NextRequest) {
             success: true,
             data: parsedData,
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error parsing file:', error);
         return NextResponse.json(
-            { error: 'Erro ao processar arquivo' },
+            { error: error.message || 'Erro ao processar arquivo' },
             { status: 500 }
         );
     }

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, FileDown, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Save, FileDown, CheckCircle2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -72,8 +72,15 @@ export default function NewSimulationPage() {
 
             if (parsed.debtItems) setDebtItems(parsed.debtItems);
 
+            if (!parsed.debtorName && (!parsed.debtItems || parsed.debtItems.length === 0)) {
+                toast.error('Nenhum dado encontrado no arquivo. Verifique se o PDF tem texto digital.');
+                return;
+            }
+
             toast.success('Arquivo processado com sucesso!');
             setCurrentTab('debtor');
+        } else {
+            toast.error('Ocorreu um erro ao processar os dados do arquivo.');
         }
     };
 
@@ -149,22 +156,22 @@ export default function NewSimulationPage() {
                             <p className="text-muted-foreground mt-0.5">Siga os passos para gerar o acordo profissional.</p>
                         </div>
                     </div>
-                    <div className="flex gap-3 w-full sm:w-auto">
+                    <div className="flex items-center gap-2">
                         <Button
                             variant="outline"
                             onClick={handleSaveSimulation}
                             disabled={saving || !calculationResult}
-                            className="flex-1 sm:flex-none border-primary/20 text-primary font-bold bg-white/50 rounded-xl"
+                            className="flex items-center gap-2 border-slate-300 text-slate-700 hover:bg-slate-50 shadow-sm"
                         >
-                            <Save className="h-4 w-4 mr-2" />
-                            {saving ? 'Salvando...' : 'Salvar'}
+                            <Save className="h-4 w-4" />
+                            Salvar
                         </Button>
                         <Button
                             onClick={handleGeneratePDF}
-                            disabled={!calculationResult}
-                            className="flex-1 sm:flex-none bg-[oklch(30%_0.1_230)] hover:bg-[oklch(40%_0.1_230)] text-white shadow-lg shadow-blue-500/20 rounded-xl font-bold"
+                            disabled={saving || !calculationResult}
+                            className="bg-slate-800 hover:bg-slate-900 text-white flex items-center gap-2 shadow-md"
                         >
-                            <FileDown className="h-4 w-4 mr-2" />
+                            <FileText className="h-4 w-4" />
                             Gerar PDF
                         </Button>
                     </div>

@@ -5,20 +5,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-bold transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-primary/10 active:scale-95",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-bold transition-all disabled:pointer-events-none disabled:opacity-30 disabled:grayscale [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-primary/10 active:scale-95",
   {
     variants: {
       variant: {
-        default: "bg-[oklch(30%_0.1_230)] text-white hover:bg-[oklch(40%_0.1_230)] shadow-lg shadow-blue-500/10",
+        default: "bg-slate-900 text-white hover:bg-slate-800 shadow-lg shadow-slate-900/10",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 shadow-lg shadow-red-500/10",
+          "bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-500/10",
         outline:
-          "border-2 border-border/50 bg-white/50 shadow-sm hover:bg-accent hover:text-accent-foreground hover:border-accent",
+          "border-2 border-slate-200 bg-white shadow-sm hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "bg-slate-100 text-slate-900 hover:bg-slate-200",
         ghost:
-          "hover:bg-secondary hover:text-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+          "hover:bg-slate-100 text-slate-600 hover:text-slate-900",
+        link: "text-slate-900 underline-offset-4 hover:underline",
       },
       size: {
         default: "h-11 px-6 py-2",

@@ -11,13 +11,21 @@ export const authConfig = {
         async jwt({ token, user }) {
             if (user) {
                 token.id = user.id
+                // @ts-ignore
+                token.role = user.role
             }
             return token
         },
         async session({ session, token }) {
-            if (session.user && token.id) {
-                // @ts-ignore
-                session.user.id = token.id as string
+            if (session.user) {
+                if (token.id) {
+                    // @ts-ignore
+                    session.user.id = token.id as string
+                }
+                if (token.role) {
+                    // @ts-ignore
+                    session.user.role = token.role as string
+                }
             }
             return session
         },

@@ -9,9 +9,24 @@ function extractAmount(text: string): number | undefined {
     // Procura por padrões de valores em reais: R$ 1.234,56 ou 1234.56
     const patterns = [
         /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/,
-        /(\d{1,3}(?:\.\d{3})*,\d{2})/,
-        /(\d+\.\d{2})/,
+        /\b(\d{1,3}(?:\.\d{3})*,\d{2})\b/,
+        /\b(\d+\.\d{2})\b/,
     ];
+
+    // Tenta encontrar o valor de "total" ou "valor nominal" em relatórios de inadimplência
+    const totalPatterns = [
+        /(?:Total|Valor Total|Total Geral|Valor Nominal)\s*:?\s*(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i,
+        /SOMA\s*:?\s*(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/i
+    ];
+
+    for (const pattern of totalPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+            const valueStr = match[1].replace(/\./g, '').replace(',', '.');
+            const value = parseFloat(valueStr);
+            if (!isNaN(value)) return value;
+        }
+    }
 
     for (const pattern of patterns) {
         const match = text.match(pattern);
@@ -77,10 +92,10 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
         const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean);
 
         // Regex inteligentes para campos brasileiros
-        const unitPattern = /(?:Unidade|Apto|Apartamento|Sala|Lote)\s*:?\s*(\d+[A-Z]?)/i;
-        const blockPattern = /(?:Bloco|Torre|Edifício|Ed)\s*:?\s*([A-Z\d]+)/i;
-        const condoLabels = /(?:Condomínio|Edifício|Residencial|Conjunto)\s*:?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ.\s\-]+)/i;
-        const nameLabels = /(?:Devedor|Proprietário|Morador|Condômino)\s*:?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s]+)/i;
+        const unitPattern = /(?:Unidade|Apto|Apartamento|Sala|Lote|Unid|Apt)\s*:?\s*(\d+[A-Z]?)/i;
+        const blockPattern = /(?:Bloco|Torre|Edifício|Ed|Bl)\s*:?\s*([A-Z\d]+)/i;
+        const condoLabels = /(?:Condomínio|Edifício|Residencial|Conjunto|Cond)\s*:?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ.\s\-]+)/i;
+        const nameLabels = /(?:Devedor|Proprietário|Morador|Condômino|Nome|Cliente)\s*:?\s*([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ\s]{5,})/i;
 
         const parsed: ParsedDocument = {
             amount: extractAmount(text),
@@ -117,29 +132,48 @@ export async function parsePDF(buffer: Buffer): Promise<ParsedDocument> {
         }
 
         // Extração de itens de dívida (Tabelas)
+        // Padrões comuns: 01/01/2024 Descrição de Débito R$ 100,00
         const debtItems: any[] = [];
-        const debtRowPattern = /(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g;
+        const debtRowPatterns = [
+            /(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})/g, // Data Descrição Valor
+            /(\d{2}\/\d{2}\/\d{4})\s+(?:R\$\s*)?(\d{1,3}(?:\.\d{3})*,\d{2})\s+([A-Z0-9].*)/g // Data Valor Descrição
+        ];
 
-        let match;
-        while ((match = debtRowPattern.exec(text)) !== null) {
-            const dateStr = match[1];
-            const description = match[2].trim();
-            const valueStr = match[3].replace(/\./g, '').replace(',', '.');
-            const amount = parseFloat(valueStr);
+        for (const pattern of debtRowPatterns) {
+            let match;
+            pattern.lastIndex = 0; // Reset regex
+            while ((match = pattern.exec(text)) !== null) {
+                let dateStr, description, valueStr;
 
-            if (!isNaN(amount) && description.length > 2) {
-                const [day, month, year] = dateStr.split('/').map(Number);
-                debtItems.push({
-                    dueDate: new Date(year, month - 1, day),
-                    description,
-                    amount
-                });
+                if (pattern.source.includes('(.+?)\\s+(?:R\\$')) {
+                    dateStr = match[1];
+                    description = match[2].trim();
+                    valueStr = match[3];
+                } else {
+                    dateStr = match[1];
+                    valueStr = match[2];
+                    description = match[3]?.trim() || 'Dívida';
+                }
+
+                if (dateStr && valueStr) {
+                    const cleanValue = valueStr.replace(/\./g, '').replace(',', '.');
+                    const amount = parseFloat(cleanValue);
+                    if (!isNaN(amount) && description && description.length > 2) {
+                        const [day, month, year] = dateStr.split('/').map(Number);
+                        debtItems.push({
+                            dueDate: new Date(year, month - 1, day),
+                            description,
+                            amount
+                        });
+                    }
+                }
             }
+            if (debtItems.length > 0) break;
         }
 
         if (debtItems.length > 0) {
             parsed.debtItems = debtItems;
-            if (!parsed.amount) {
+            if (!parsed.amount || parsed.amount === 0) {
                 parsed.amount = debtItems.reduce((acc, item) => acc + item.amount, 0);
             }
         }

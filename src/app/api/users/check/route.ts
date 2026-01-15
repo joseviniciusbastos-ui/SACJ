@@ -5,7 +5,11 @@ export async function GET(req: NextRequest) {
     try {
         const userCount = await prisma.user.count();
         return NextResponse.json({ hasUsers: userCount > 0 });
-    } catch (error) {
-        return NextResponse.json({ error: 'Erro ao verificar usuários' }, { status: 500 });
+    } catch (error: any) {
+        console.error('Error checking users:', error);
+        return NextResponse.json(
+            { error: 'Erro ao verificar usuários', details: error.message },
+            { status: 500 }
+        );
     }
 }

@@ -58,10 +58,10 @@ export async function POST(req: NextRequest) {
             message: 'Usuário criado com sucesso',
             userId: user.id,
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error creating user:', error);
         return NextResponse.json(
-            { error: 'Erro ao criar usuário' },
+            { error: 'Erro ao criar usuário', details: error.message },
             { status: 500 }
         );
     }
